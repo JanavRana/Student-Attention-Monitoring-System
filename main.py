@@ -32,6 +32,13 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 from mediapipe.tasks.python.vision import drawing_utils as mp_drawing
 
+# ── Phase 2 additions ────────────────────────────────────────────────
+from landmark_processor import LandmarkProcessor
+from blink_detector import BlinkDetector, BlinkResult, EyeState, ClosureType
+
+# ── Phase 3 additions ────────────────────────────────────────────────
+from head_pose_estimator import HeadPoseEstimator, draw_headpose_overlay
+
 # ─────────────────────────────────────────────────────────────────────
 # Configuration
 # ─────────────────────────────────────────────────────────────────────
@@ -282,6 +289,42 @@ def draw_overlay(frame_bgr: np.ndarray, fps: float, face_found: bool) -> None:
                 cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
 
 
+def draw_blink_overlay(frame_bgr: np.ndarray, blink_result: BlinkResult) -> None:
+    """
+    Render Phase 2 blink debug HUD in the bottom-left corner.
+    Six fixed-position text lines — no per-frame layout computation.
+    """
+    x        = 10
+    y_base   = FRAME_HEIGHT - 135    # anchor: 135 px from bottom edge
+    line_gap = 22                    # vertical gap between lines
+
+    is_closed    = blink_result.eye_state is EyeState.CLOSED
+    state_color  = (0, 0, 220) if is_closed else (0, 210, 0)
+
+    # Build display lines: (text, color)
+    lines = [
+        (f"Blinks : {blink_result.blink_count}",            (230, 230, 230)),
+        (f"L-EAR  : {blink_result.left_ear:.3f}",           (180, 180, 180)),
+        (f"R-EAR  : {blink_result.right_ear:.3f}",          (180, 180, 180)),
+        (f"Avg EAR: {blink_result.average_ear:.3f}",        (180, 210, 255)),
+        (f"Eyes   : {blink_result.eye_state.value}",        state_color),
+    ]
+
+    # Show live closure type + duration only when eyes are closed or
+    # immediately after — avoids a stale label cluttering the normal view.
+    if is_closed or blink_result.closure_duration_s > 0.0:
+        event_text  = blink_result.last_closure_type.value
+        dur_text    = f"[{event_text}  {blink_result.closure_duration_s:.2f}s]"
+        dur_color   = (0, 140, 255) if is_closed else (130, 130, 130)
+        lines.append((dur_text, dur_color))
+
+    for i, (text, color) in enumerate(lines):
+        cv2.putText(
+            frame_bgr, text, (x, y_base + i * line_gap),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.52, color, 1, cv2.LINE_AA,
+        )
+
+
 def main() -> None:
     # ── 1. Ensure model file is present ──────────────────────────────
     try:
@@ -299,6 +342,10 @@ def main() -> None:
 
     # ── 3. Create detector ────────────────────────────────────────────
     detector = init_face_landmarker(MODEL_FILENAME)
+
+    processor     = LandmarkProcessor(FRAME_WIDTH, FRAME_HEIGHT)
+    blink_det     = BlinkDetector()
+    head_pose     = HeadPoseEstimator(FRAME_WIDTH, FRAME_HEIGHT)
 
     print("[INFO] Pipeline initialised — showing live feed.")
     print("       Green mesh = face detected.  Red text = no face found.")
@@ -330,7 +377,16 @@ def main() -> None:
             timestamp_ms = int((time.monotonic() - session_start_s) * 1000)
 
             resized_frame, result = detect_landmarks(detector, frame, timestamp_ms)
+
+            # ── Phase 2: coordinate conversion + blink detection ────────────────
+            processor.update(result)
+            timestamp_s  = timestamp_ms / 1000.0
+            blink_result = blink_det.update(processor, timestamp_s)
+
+            pose_result  = head_pose.update(processor, timestamp_s)
+
             face_found = draw_face_mesh(resized_frame, result)
+
 
             # FPS: simple delta-time (no rolling average needed for a
             # live display; a 1-frame delta is stable enough at 10-15 FPS).
@@ -338,7 +394,13 @@ def main() -> None:
             fps = 1.0 / max(now - prev_time_s, 1e-6)
             prev_time_s = now
 
+            # Existing overlay + new blink overlay
             draw_overlay(resized_frame, fps, face_found)
+            draw_blink_overlay(resized_frame, blink_result) 
+
+            draw_headpose_overlay(resized_frame, pose_result)
+            head_pose.draw_debug_axes(resized_frame)   # optional: remove once validated
+
             cv2.imshow(WINDOW_NAME, resized_frame)
 
             # waitKey(1) keeps the GUI event loop alive.
