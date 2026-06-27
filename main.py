@@ -36,6 +36,9 @@ from mediapipe.tasks.python.vision import drawing_utils as mp_drawing
 from landmark_processor import LandmarkProcessor
 from blink_detector import BlinkDetector, BlinkResult, EyeState, ClosureType
 
+# ── Phase 3 additions ────────────────────────────────────────────────
+from head_pose_estimator import HeadPoseEstimator, draw_headpose_overlay
+
 # ─────────────────────────────────────────────────────────────────────
 # Configuration
 # ─────────────────────────────────────────────────────────────────────
@@ -342,6 +345,7 @@ def main() -> None:
 
     processor     = LandmarkProcessor(FRAME_WIDTH, FRAME_HEIGHT)
     blink_det     = BlinkDetector()
+    head_pose     = HeadPoseEstimator(FRAME_WIDTH, FRAME_HEIGHT)
 
     print("[INFO] Pipeline initialised — showing live feed.")
     print("       Green mesh = face detected.  Red text = no face found.")
@@ -379,6 +383,8 @@ def main() -> None:
             timestamp_s  = timestamp_ms / 1000.0
             blink_result = blink_det.update(processor, timestamp_s)
 
+            pose_result  = head_pose.update(processor, timestamp_s)
+
             face_found = draw_face_mesh(resized_frame, result)
 
 
@@ -391,6 +397,9 @@ def main() -> None:
             # Existing overlay + new blink overlay
             draw_overlay(resized_frame, fps, face_found)
             draw_blink_overlay(resized_frame, blink_result) 
+
+            draw_headpose_overlay(resized_frame, pose_result)
+            head_pose.draw_debug_axes(resized_frame)   # optional: remove once validated
 
             cv2.imshow(WINDOW_NAME, resized_frame)
 
