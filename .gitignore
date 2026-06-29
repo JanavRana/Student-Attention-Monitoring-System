@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# VS Code
+.vscode/
+
+# MediaPipe model
+face_landmarker.task
+
+# OS files
+.DS_Store
+Thumbs.db

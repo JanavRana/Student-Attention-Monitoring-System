@@ -1,0 +1,15 @@
+# Core Computer Vision
+opencv-contrib-python>=4.11.0
+mediapipe>=0.10.35
+numpy>=2.2.0
+
+# Visualization (MediaPipe dependency, but useful if imported directly)
+matplotlib>=3.10.0
+
+# Required by MediaPipe
+absl-py>=2.2.0
+protobuf>=4.25.0
+flatbuffers>=25.2.10
+
+# Optional but commonly required
+typing-extensions>=4.12.0
